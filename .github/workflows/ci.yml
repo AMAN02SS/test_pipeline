@@ -1,4 +1,4 @@
-name: CI
+name: Cloud DevOps CI
 
 on:
   push:
@@ -9,19 +9,30 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
+
   validate:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show Git version
-        run: git --version
-
-      - name: Show repository files
+      - name: Display repository
         run: ls -la
 
-      - name: Run validation
-        run: echo "CI validation successful"
+      - name: Check Git
+        run: git --version
+
+      - name: Validate project
+        run: echo "Validation successful"
+
+      - name: Show commit SHA
+        run: echo "${{ github.sha }}"
+
+      - name: Show branch
+        run: echo "${{ github.ref }}"
