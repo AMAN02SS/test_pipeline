@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-
   pull_request:
     branches:
       - main
@@ -13,26 +12,34 @@ permissions:
   contents: read
 
 jobs:
-
-  validate:
+  terraform-ci:
+    name: Terraform Quality & Validation
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Display repository
-        run: ls -la
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.0
 
-      - name: Check Git
-        run: git --version
+      - name: Check Terraform Format
+        run: terraform fmt -check -recursive
 
-      - name: Validate project
-        run: echo "Validation successful"
+      - name: Initialize Dev Environment
+        working-directory: terraform/environment/dev
+        run: terraform init -backend=false
 
-      - name: Show commit SHA
-        run: echo "${{ github.sha }}"
+      - name: Validate Dev Environment
+        working-directory: terraform/environment/dev
+        run: terraform validate
 
-      - name: Show branch
-        run: echo "${{ github.ref }}"
+      - name: Initialize Prod Environment
+        working-directory: terraform/environment/prod
+        run: terraform init -backend=false
+
+      - name: Validate Prod Environment
+        working-directory: terraform/environment/prod
+        run: terraform validate
