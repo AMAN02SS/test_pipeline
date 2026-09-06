@@ -37,7 +37,7 @@ variable "bastion_subnet_cidr" {
 variable "vm_size" {
   type        = string
   description = "Azure VM SKU."
-  default     = "Standard_D2s_v5"
+  default     = "Standard_B2as_v2"
 }
 
 variable "admin_username" {
