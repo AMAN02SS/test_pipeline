@@ -79,39 +79,9 @@ jobs:
   # ==========================================
   # STAGE 2: Dev Environment Deployment
   # ==========================================
-  plan-dev:
-    name: 2. Plan (Dev Environment)
+  deploy-dev:
+    name: 2. Deploy (Dev Environment)
     needs: validate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Terraform Init (Dev)
-        working-directory: terraform/environment/dev
-        run: terraform init
-
-      - name: Terraform Plan (Dev)
-        working-directory: terraform/environment/dev
-        run: terraform plan -no-color -out=tfplan-dev
-
-      - name: Upload Dev Plan Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-dev
-          path: terraform/environment/dev/tfplan-dev
-          retention-days: 1
-
-  apply-dev:
-    name: 3. Apply (Dev Environment)
-    needs: plan-dev
-    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev' && github.event.inputs.action == 'apply')
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -128,13 +98,12 @@ jobs:
         working-directory: terraform/environment/dev
         run: terraform init
 
-      - name: Download Dev Plan Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan-dev
-          path: terraform/environment/dev
+      - name: Terraform Plan (Dev)
+        working-directory: terraform/environment/dev
+        run: terraform plan -out=tfplan-dev
 
       - name: Terraform Apply (Dev)
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev' && github.event.inputs.action == 'apply')
         working-directory: terraform/environment/dev
         run: terraform apply -auto-approve tfplan-dev
 
@@ -142,8 +111,8 @@ jobs:
   # STAGE 3: Prod Environment Deployment (Requires Approval)
   # ========================================================
   plan-prod:
-    name: 4. Plan (Prod Environment)
-    needs: apply-dev
+    name: 3. Plan (Prod Environment)
+    needs: deploy-dev
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -162,7 +131,7 @@ jobs:
 
       - name: Terraform Plan (Prod)
         working-directory: terraform/environment/prod
-        run: terraform plan -no-color -out=tfplan-prod
+        run: terraform plan -out=tfplan-prod
 
       - name: Upload Prod Plan Artifact
         uses: actions/upload-artifact@v4
@@ -170,9 +139,10 @@ jobs:
           name: tfplan-prod
           path: terraform/environment/prod/tfplan-prod
           retention-days: 1
+          overwrite: true
 
   apply-prod:
-    name: 5. Apply (Prod Environment) 🛡️ Requires Approval
+    name: 4. Apply (Prod Environment) 🛡️ Requires Approval
     needs: plan-prod
     if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.action == 'apply')
     runs-on: ubuntu-latest
