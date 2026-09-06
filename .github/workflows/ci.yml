@@ -1,45 +1,197 @@
-name: Cloud DevOps CI
+name: Enterprise Terraform CI/CD Pipeline (Dev -> Prod Gate)
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/**'
   pull_request:
     branches:
       - main
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      action:
+        description: 'Terraform Action'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - plan
+          - apply
 
 permissions:
   contents: read
+  pull-requests: write
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  TF_VAR_admin_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  TF_VERSION: '1.8.0'
 
 jobs:
-  terraform-ci:
-    name: Terraform Quality & Validation
+  # ==========================================
+  # STAGE 1: Code Quality & Syntax Validation
+  # ==========================================
+  validate:
+    name: 1. Code Quality & Format Check
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.8.0
+          terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Check Terraform Format
+      - name: Check Terraform Formatting
         run: terraform fmt -check -recursive
 
-      - name: Initialize Dev Environment
+      - name: Validate Dev Code
         working-directory: terraform/environment/dev
-        run: terraform init -backend=false
+        run: |
+          terraform init -backend=false
+          terraform validate
 
-      - name: Validate Dev Environment
+      - name: Validate Prod Code
+        working-directory: terraform/environment/prod
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # ==========================================
+  # STAGE 2: Dev Environment Deployment
+  # ==========================================
+  plan-dev:
+    name: 2. Plan (Dev Environment)
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (Dev)
         working-directory: terraform/environment/dev
-        run: terraform validate
+        run: terraform init
 
-      - name: Initialize Prod Environment
-        working-directory: terraform/environment/prod
-        run: terraform init -backend=false
+      - name: Terraform Plan (Dev)
+        working-directory: terraform/environment/dev
+        run: terraform plan -no-color -out=tfplan-dev
 
-      - name: Validate Prod Environment
+      - name: Upload Dev Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-dev
+          path: terraform/environment/dev/tfplan-dev
+          retention-days: 1
+
+  apply-dev:
+    name: 3. Apply (Dev Environment)
+    needs: plan-dev
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev' && github.event.inputs.action == 'apply')
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (Dev)
+        working-directory: terraform/environment/dev
+        run: terraform init
+
+      - name: Download Dev Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-dev
+          path: terraform/environment/dev
+
+      - name: Terraform Apply (Dev)
+        working-directory: terraform/environment/dev
+        run: terraform apply -auto-approve tfplan-dev
+
+  # ========================================================
+  # STAGE 3: Prod Environment Deployment (Requires Approval)
+  # ========================================================
+  plan-prod:
+    name: 4. Plan (Prod Environment)
+    needs: apply-dev
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (Prod)
         working-directory: terraform/environment/prod
-        run: terraform validate
+        run: terraform init
+
+      - name: Terraform Plan (Prod)
+        working-directory: terraform/environment/prod
+        run: terraform plan -no-color -out=tfplan-prod
+
+      - name: Upload Prod Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prod
+          path: terraform/environment/prod/tfplan-prod
+          retention-days: 1
+
+  apply-prod:
+    name: 5. Apply (Prod Environment) 🛡️ Requires Approval
+    needs: plan-prod
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.action == 'apply')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (Prod)
+        working-directory: terraform/environment/prod
+        run: terraform init
+
+      - name: Download Prod Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prod
+          path: terraform/environment/prod
+
+      - name: Terraform Apply (Prod)
+        working-directory: terraform/environment/prod
+        run: terraform apply -auto-approve tfplan-prod

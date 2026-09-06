@@ -49,7 +49,6 @@ variable "admin_username" {
 variable "admin_ssh_public_key" {
   type        = string
   description = "Public SSH Key string for authenticating to Linux VMs."
-  default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyPlaceHolderDoNotUseDirectlyInProd admin@prod"
 }
 
 variable "tags" {
