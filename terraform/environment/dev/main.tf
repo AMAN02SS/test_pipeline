@@ -100,28 +100,39 @@ module "nsg" {
   ]
 }
 
-# 7. Network Interfaces for VM1 & VM2 (Associated with LB Backend Pool)
+# 7. Network Interfaces for VM1 & VM2
 module "nic_vm1" {
-  source                  = "../../module/nic"
-  nic_name                = "nic-${var.environment}-web01"
-  resource_group_name     = module.resource_group.name
-  location                = module.resource_group.location
-  subnet_id               = module.virtual_network.subnet_ids["snet-web"]
-  backend_address_pool_id = module.loadbalancer.backend_address_pool_id
-  tags                    = var.tags
+  source              = "../../module/nic"
+  nic_name            = "nic-${var.environment}-web01"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  subnet_id           = module.virtual_network.subnet_ids["snet-web"]
+  tags                = var.tags
 }
 
 module "nic_vm2" {
-  source                  = "../../module/nic"
-  nic_name                = "nic-${var.environment}-web02"
-  resource_group_name     = module.resource_group.name
-  location                = module.resource_group.location
-  subnet_id               = module.virtual_network.subnet_ids["snet-web"]
-  backend_address_pool_id = module.loadbalancer.backend_address_pool_id
-  tags                    = var.tags
+  source              = "../../module/nic"
+  nic_name            = "nic-${var.environment}-web02"
+  resource_group_name = module.resource_group.name
+  location            = module.resource_group.location
+  subnet_id           = module.virtual_network.subnet_ids["snet-web"]
+  tags                = var.tags
 }
 
-# 8. Linux Virtual Machines (VM1 & VM2 with NGINX Cloud-Init)
+# 8. Associate Network Interfaces with Load Balancer Backend Pool
+resource "azurerm_network_interface_backend_address_pool_association" "nic_vm1_assoc" {
+  network_interface_id    = module.nic_vm1.id
+  ip_configuration_name   = "internal"
+  backend_address_pool_id = module.loadbalancer.backend_address_pool_id
+}
+
+resource "azurerm_network_interface_backend_address_pool_association" "nic_vm2_assoc" {
+  network_interface_id    = module.nic_vm2.id
+  ip_configuration_name   = "internal"
+  backend_address_pool_id = module.loadbalancer.backend_address_pool_id
+}
+
+# 9. Linux Virtual Machines (VM1 & VM2 with NGINX Cloud-Init)
 module "vm1" {
   source                = "../../module/virtual_machine"
   vm_name               = "vm-${var.environment}-web01"
@@ -148,7 +159,7 @@ module "vm2" {
   tags                  = var.tags
 }
 
-# 9. Azure Bastion Host for Secure Private Management
+# 10. Azure Bastion Host for Secure Private Management
 module "bastion" {
   source               = "../../module/bastion"
   bastion_name         = "bastion-${var.environment}"

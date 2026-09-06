@@ -12,10 +12,3 @@ resource "azurerm_network_interface" "nic" {
     public_ip_address_id          = var.public_ip_address_id
   }
 }
-
-resource "azurerm_network_interface_backend_address_pool_association" "nic_lb_assoc" {
-  count                   = var.backend_address_pool_id != null ? 1 : 0
-  network_interface_id    = azurerm_network_interface.nic.id
-  ip_configuration_name   = var.ip_configuration_name
-  backend_address_pool_id = var.backend_address_pool_id
-}

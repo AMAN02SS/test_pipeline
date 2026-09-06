@@ -42,12 +42,6 @@ variable "public_ip_address_id" {
   default     = null
 }
 
-variable "backend_address_pool_id" {
-  type        = string
-  description = "The ID of the Load Balancer Backend Address Pool to associate with this Network Interface."
-  default     = null
-}
-
 variable "tags" {
   type        = map(string)
   description = "A mapping of tags to assign to the resource."
