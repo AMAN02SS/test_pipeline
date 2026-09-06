@@ -59,6 +59,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Check Terraform Formatting
         run: terraform fmt -check -recursive
@@ -90,6 +91,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Terraform Init (Dev)
         working-directory: terraform/environment/dev
@@ -120,6 +122,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Terraform Init (Dev)
         working-directory: terraform/environment/dev
@@ -151,6 +154,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Terraform Init (Prod)
         working-directory: terraform/environment/prod
@@ -181,6 +185,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
 
       - name: Terraform Init (Prod)
         working-directory: terraform/environment/prod
