@@ -76,14 +76,14 @@ module "nsg" {
 
   security_rules = [
     {
-      name                       = "AllowHTTPInbound"
+      name                       = "AllowHTTPFromAzureLB"
       priority                   = 100
       direction                  = "Inbound"
       access                     = "Allow"
       protocol                   = "Tcp"
       source_port_range          = "*"
       destination_port_range     = "80"
-      source_address_prefix      = "*"
+      source_address_prefix      = "AzureLoadBalancer"
       destination_address_prefix = "*"
     },
     {

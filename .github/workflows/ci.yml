@@ -35,6 +35,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  security-events: write
 
 env:
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -77,11 +78,31 @@ jobs:
           terraform validate
 
   # ==========================================
-  # STAGE 2: Dev Environment Deployment
+  # STAGE 2: Security & Vulnerability Scan
+  # ==========================================
+  security-scan:
+    name: 2. Security & Compliance Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy IaC Security Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'terraform/'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+  # ==========================================
+  # STAGE 3: Dev Environment Deployment
   # ==========================================
   deploy-dev:
-    name: 2. Deploy (Dev Environment)
-    needs: validate
+    name: 3. Deploy (Dev Environment)
+    needs: [validate, security-scan]
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -103,15 +124,15 @@ jobs:
         run: terraform plan -out=tfplan-dev
 
       - name: Terraform Apply (Dev)
-        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
         working-directory: terraform/environment/dev
         run: terraform apply -auto-approve tfplan-dev
 
   # ========================================================
-  # STAGE 3: Prod Environment Deployment (Requires Approval)
+  # STAGE 4: Prod Environment Deployment (Requires Approval)
   # ========================================================
   plan-prod:
-    name: 3. Plan (Prod Environment)
+    name: 4. Plan (Prod Environment)
     needs: deploy-dev
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -142,7 +163,7 @@ jobs:
           overwrite: true
 
   apply-prod:
-    name: 4. Apply (Prod Environment) 🛡️ Requires Approval
+    name: 5. Apply (Prod Environment) 🛡️ Requires Approval
     needs: plan-prod
     if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.action == 'apply')
     runs-on: ubuntu-latest
