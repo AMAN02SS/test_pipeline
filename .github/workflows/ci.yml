@@ -1,15 +1,13 @@
-name: Enterprise Terraform CI/CD Pipeline (Dev -> Prod Gate)
+name: Terraform Azure Cloud Multi-Env Pipeline
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    branches: [ main ]
     paths:
       - 'terraform/**'
       - '.github/workflows/**'
-  pull_request:
-    branches:
-      - main
+  push:
+    branches: [ main ]
     paths:
       - 'terraform/**'
       - '.github/workflows/**'
@@ -38,22 +36,22 @@ permissions:
   security-events: write
 
 env:
+  TF_VERSION: '1.8.0'
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   TF_VAR_admin_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-  TF_VERSION: '1.8.0'
 
 jobs:
   # ==========================================
   # STAGE 1: Code Quality & Syntax Validation
   # ==========================================
   validate:
-    name: 1. Code Quality & Format Check
+    name: '1. Code Quality & Format Check'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -81,10 +79,10 @@ jobs:
   # STAGE 2: Security & Vulnerability Scan
   # ==========================================
   security-scan:
-    name: 2. Security & Compliance Scan
+    name: '2. Security & Compliance Scan'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Run Trivy IaC Security Scanner
@@ -97,16 +95,15 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
   # ==========================================
-  # STAGE 3: Dev Environment Deployment
+  # DEV ENVIRONMENT JOBS
   # ==========================================
-  deploy-dev:
-    name: 3. Deploy (Dev Environment)
+  dev-plan:
+    name: 'Dev: Plan'
     needs: [validate, security-scan]
-    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     runs-on: ubuntu-latest
-    environment: dev
+    if: github.event_name == 'pull_request'
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -121,23 +118,47 @@ jobs:
 
       - name: Terraform Plan (Dev)
         working-directory: terraform/environment/dev
-        run: terraform plan -out=tfplan-dev
+        run: terraform plan -no-color
+
+  dev-apply:
+    name: 'Dev: Apply'
+    needs: [validate, security-scan]
+    runs-on: ubuntu-latest
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    environment: dev
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init (Dev)
+        working-directory: terraform/environment/dev
+        run: terraform init
+
+      - name: Terraform Plan (Dev)
+        working-directory: terraform/environment/dev
+        run: terraform plan -out=tfplan-dev -no-color
 
       - name: Terraform Apply (Dev)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
         working-directory: terraform/environment/dev
         run: terraform apply -auto-approve tfplan-dev
 
-  # ========================================================
-  # STAGE 4: Prod Environment Deployment (Requires Approval)
-  # ========================================================
-  plan-prod:
-    name: 4. Plan (Prod Environment)
-    needs: deploy-dev
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  # ==========================================
+  # PROD ENVIRONMENT JOBS
+  # ==========================================
+  prod-plan:
+    name: 'Prod: Plan'
+    needs: dev-apply # Enforces that Dev successfully deploys before Prod starts
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -152,24 +173,24 @@ jobs:
 
       - name: Terraform Plan (Prod)
         working-directory: terraform/environment/prod
-        run: terraform plan -out=tfplan-prod
+        run: terraform plan -out=tfplan-prod -no-color
 
       - name: Upload Prod Plan Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-prod
+          name: prod-tfplan
           path: terraform/environment/prod/tfplan-prod
           retention-days: 1
           overwrite: true
 
-  apply-prod:
-    name: 5. Apply (Prod Environment) 🛡️ Requires Approval
-    needs: plan-prod
-    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.action == 'apply')
+  prod-apply:
+    name: 'Prod: Apply'
+    needs: prod-plan
     runs-on: ubuntu-latest
-    environment: production
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.action == 'apply')
+    environment: production # Triggers manual approval gate in GitHub Settings
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -178,15 +199,15 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Terraform Init (Prod)
-        working-directory: terraform/environment/prod
-        run: terraform init
-
       - name: Download Prod Plan Artifact
         uses: actions/download-artifact@v4
         with:
-          name: tfplan-prod
+          name: prod-tfplan
           path: terraform/environment/prod
+
+      - name: Terraform Init (Prod)
+        working-directory: terraform/environment/prod
+        run: terraform init
 
       - name: Terraform Apply (Prod)
         working-directory: terraform/environment/prod
