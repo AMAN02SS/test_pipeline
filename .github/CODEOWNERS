@@ -1,0 +1,9 @@
+# CODEOWNERS file to automatically request review on Pull Requests
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repository
+* @Mayanksikarwar18
+
+# Specific owners for Terraform infrastructure and CI/CD pipelines
+terraform/** @Mayanksikarwar18
+.github/** @Mayanksikarwar18
